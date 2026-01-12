@@ -1,128 +1,168 @@
-# Personal Health & Wellness Aggregator (Streamlit MVP)
+# Personal Health & Wellness Aggregator – Design Document
 
-## Quickstart
-```bash
-python -m venv .venv
-source .venv/bin/activate   # (Windows) .venv\Scripts\activate
-pip install -r requirements.txt
-streamlit run app.py
-```
+## 1. Overview
 
-_____## Ingestion options (MVP)
-1) **Apple Health export**: upload either:
-   - `export.xml` (from Apple Health export), or
-   - `export.zip` containing `apple_health_export/export.xml` or `export.xml`
+The Personal Health & Wellness Aggregator is an intelligent platform designed to unify health data from multiple disconnected sources and transform it into actionable, personalized insights. Rather than acting as another raw data tracker, the system focuses on correlation discovery, anomaly detection, and explainable AI-driven guidance to help users understand how sleep, nutrition, and activity interact over time.
 
-2) **Synthetic CSVs** (included in `data/synthetic/`): heart rate, activity, sleep, nutrition
+The prototype is implemented as a lightweight web application and demonstrates how an AI-powered wellness platform could operate using real-world wearable and app integrations.
 
-## Notes
-- All ingested data is normalized into a canonical event table, then aggregated into a daily feature store.
-- LLM features are optional; set `OPENAI_API_KEY` in your environment to enable._____
+---
 
+## 2. Problem Statement
 
-######3
-import os
-import streamlit as st
-import pandas as pd
-import plotly.graph_objects as go
-import plotly.express as px
-from sklearn.ensemble import IsolationForest
-from google import genai
-from data_generator import generate_multi_source_data
+Health-conscious users often rely on multiple tools—wearables, nutrition apps, and mobile trackers—that operate in isolation. While each tool provides useful metrics, users struggle to:
 
-st.set_page_config(page_title="Health Aggregator", layout="wide")
-client = genai.Client(api_key="AIzaSyAQXWKWQtGIFkrCGmDWt2ZQhKzwRP6Hwhw")
+* See relationships across data sources (e.g., sleep vs. workout quality)
+* Identify unusual or concerning patterns early
+* Translate raw metrics into practical decisions
 
-# --- DATA & ANOMALIES ---
-def get_unified_data():
-    if not os.path.exists("heart_rate.csv"):
-        generate_multi_source_data()
-    
-    # Load all sources
-    df_hr = pd.read_csv("heart_rate.csv", parse_dates=['date'])
-    df_act = pd.read_csv("activity.csv", parse_dates=['date'])
-    df_slp = pd.read_csv("sleep.csv", parse_dates=['date'])
-    df_nut = pd.read_csv("nutrition.csv", parse_dates=['date'])
-    
-    # Merge all on date
-    unified = df_hr.merge(df_act, on='date').merge(df_slp, on='date').merge(df_nut, on='date')
-    unified.to_csv("unified_health_data.csv", index=False)
-    return unified
+This fragmentation prevents users from developing a holistic understanding of their health.
 
-df = get_unified_data()
+---
 
-def get_anomalies(data):
-    features = ['heart_rate_bpm', 'sleep_hrs', 'caffeine_mg', 'active_min']
-    model = IsolationForest(contamination=0.05, random_state=42)
-    data['is_anomaly'] = model.fit_predict(data[features])
-    return data[data['is_anomaly'] == -1]
+## 3. Target Users
 
-anomalies = get_anomalies(df)
+* **Fitness Enthusiasts**: Want to optimize training and recovery by understanding how sleep and nutrition affect performance.
+* **Health-Conscious Individuals**: Want clearer insights into daily habits and their downstream effects.
+* **Users Managing Chronic Conditions**: Need to monitor multiple signals together and detect deviations from personal baselines.
 
-# --- UI: DASHBOARD ---
-st.title("❤️‍ Personal Health Wellness Aggregator")
+---
 
-# KPI Row 
-kpi1, kpi2, kpi3 = st.columns(3)
-kpi1.metric("Avg Sleep (Week)", f"{df['sleep_hrs'].tail(7).mean():.1f} hrs") # [cite: 29]
-kpi2.metric("Avg Heart Rate", f"{df['heart_rate_bpm'].mean():.0f} bpm") # [cite: 31]
-kpi3.metric("Active Minutes", f"{df['active_min'].mean():.0f} min") # [cite: 30]
+## 4. Solution Approach
 
-# Generate Button [cite: 23]
-if st.sidebar.button("Generate New Data"):
-    generate_multi_source_data()
-    st.rerun()
+The platform follows a three-layer approach:
 
-# Unified Chart with Toggles 
-st.subheader("Unified Health Timeline")
-metrics = ['heart_rate_bpm', 'sleep_hrs', 'active_min', 'caffeine_mg', 'sugar_g']
-selected_metrics = [m for m in metrics if st.sidebar.checkbox(f"Show {m}", value=True)]
+1. **Data Unification** – Ingest and align multiple health data streams by date.
+2. **Intelligence Layer** – Apply ML models to detect anomalies, compute derived metrics, and discover correlations.
+3. **Insight Layer** – Use AI to translate statistical findings into human-readable, supportive guidance.
 
-fig = go.Figure()
-colors = px.colors.qualitative.Plotly
-for i, m in enumerate(selected_metrics):
-    fig.add_trace(go.Scatter(x=df['date'], y=df[m], name=m, line=dict(color=colors[i % len(colors)])))
+Synthetic data is used in this prototype to simulate realistic device exports while maintaining full control over correlations and anomalies.
 
-# Label Anomalies on Chart 
-fig.add_trace(go.Scatter(
-    x=anomalies['date'], y=anomalies['heart_rate_bpm'],
-    mode='markers', name='Anomaly Detected',
-    marker=dict(color='red', size=10, symbol='x')
-))
-st.plotly_chart(fig, use_container_width=True)
+---
 
-# List Anomalies [cite: 33]
-with st.expander("Detailed Anomaly List"):
-    st.table(anomalies[['date', 'heart_rate_bpm', 'caffeine_mg', 'sleep_hrs']].tail())
+## 5. System Architecture
 
-# --- AI ASSISTANT (2 MODES) [cite: 46] ---
-st.divider()
-tab1, tab2 = st.tabs(["Insights Generator", "Health Q&A"])
+### 5.1 Data Sources (Simulated)
 
-# Mode 1: Insights Generator [cite: 47]
-with tab1:
-    if st.button("Generate Weekly Insights"):
-        with st.spinner("Gemini is analyzing your health patterns..."):
-            # Passing summary stats, anomalies, and correlations [cite: 42, 43, 44]
-            corr = df.corr().unstack().sort_values(ascending=False)
-            top_corr = corr[corr < 1.0].head(2).to_string()
-            
-            prompt = f"""You are a professional health coach. Generate 3-5 bullet insights and 2 suggested actions for the user based on the user's health data. Explain to the user in a supportive, actionable, and concise sentences. Use non-medical language and include caveats where appropriate.
-            Summary Stats: {df.describe().to_string()}
-            Top Correlations: {top_corr}
-            Recent Anomalies: {anomalies.tail(3).to_string()}
-            """ # [cite: 49, 50]
-            
-            response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
-            st.write(response.text)
+* **Wearable (Heart Rate)**: Daily resting heart rate
+* **Activity Tracker**: Steps, active minutes, workout intensity, sleep hours
+* **Phone Usage**: Screen time
+* **Nutrition App**: Caffeine intake, calories, protein
 
-# Mode 2: Q&A Assistant 
-with tab2:
-    user_query = st.text_input("Ask about your health (e.g., 'Why did my heart rate spike?')") # [cite: 55]
-    if user_query:
-        # Simple RAG: find anomalies and co-occurring metric changes [cite: 52, 57, 58]
-        context = f"Context: On dates with spikes, caffeine was {anomalies['caffeine_mg'].mean()} mg vs normal {df['caffeine_mg'].mean()} mg."
-        full_prompt = f"{context}\nQuestion: {user_query}\nAnswer grounded in stats:" # [cite: 38]
-        
-        response = client.models.generate_content(model="gemini-2.5-flash", contents=full_prompt)
-        st.write(response.text) # [cite: 56, 59]
+Each source is exported as a separate CSV to mirror real-world API boundaries.
+
+### 5.2 Aggregation Layer
+
+* Data is merged on date into a unified dataframe.
+* Lagged features are created to model real-world causality (e.g., yesterday’s sleep affects today’s recovery).
+* A holistic **Recovery Score (0–100)** is computed by the platform using prior-day sleep and caffeine.
+
+### 5.3 Intelligence Layer
+
+* **Anomaly Detection**: Isolation Forest model learns user-specific baselines and flags deviations.
+* **Correlation Analysis**: Pearson correlations are computed across numeric metrics to surface meaningful relationships.
+* **Predictive Modeling**: Linear regression estimates next-day recovery for “what-if” simulations.
+
+### 5.4 AI Layer
+
+* A large language model (Gemini) generates:
+
+  * Weekly coaching-style insights
+  * Natural language explanations for anomalies
+  * Interactive Q&A grounded in user statistics
+
+The AI layer is strictly explanatory and avoids medical claims.
+
+---
+
+## 6. Key Features
+
+### 6.1 Unified Health Story Dashboard
+
+* Single timeline showing sleep, activity, nutrition, and recovery
+* Preset views (Steps, Habit, Stress, Training) for different user goals
+* Designed to tell a coherent story rather than display isolated charts
+
+### 6.2 Proactive Anomaly Detection
+
+* Automatically flags days that deviate from the user’s baseline
+* Visual markers on charts + tabular breakdown
+* Enables early awareness of unusual patterns
+
+### 6.3 AI-Powered Correlation Explorer
+
+* Surfaces non-obvious metric relationships
+* One-click correlation buttons generate time series and scatter plots
+* Helps users understand cause-and-effect patterns
+
+### 6.4 Recovery “What-If” Simulator
+
+* Allows users to simulate how planned sleep and caffeine affect recovery
+* Trains on personal historical data
+* Encourages behavior experimentation rather than passive tracking
+
+### 6.5 AI Insights & Health Coach Chat
+
+* Automatically generated weekly insights
+* Context-aware Q&A grounded in the user’s own data
+* Supportive, non-judgmental tone with clear caveats
+
+---
+
+## 7. Technology Stack
+
+### Frontend
+
+* **Streamlit** – Rapid UI development and interactive dashboards
+* **Plotly** – Interactive, explorable visualizations
+
+### Backend / Data Processing
+
+* **Python** – Core application logic
+* **Pandas / NumPy** – Data manipulation and feature engineering
+
+### Machine Learning
+
+* **Isolation Forest** – Unsupervised anomaly detection
+* **Linear Regression** – Lightweight, interpretable prediction model
+
+### AI
+
+* **Google Gemini (LLM)** – Insight generation and Q&A
+
+---
+
+## 8. Privacy & Trust Considerations
+
+* No medical diagnoses or treatment advice is provided
+* AI outputs are framed as informational insights, not prescriptions
+* Recovery score logic is transparent and explainable
+* In a production system:
+
+  * Data would be encrypted at rest and in transit
+  * AI processing would follow strict privacy and consent controls
+
+---
+
+## 9. Challenges & Tradeoffs
+
+* Balancing realism with simplicity in synthetic data generation
+* Avoiding misleading correlations while still surfacing insights
+* Preventing AI outputs from sounding medical or authoritative
+* Designing an interface that scales from casual users to power users
+
+---
+
+## 10. Future Enhancements
+
+* Integration with real health APIs (Apple HealthKit, Google Fit)
+* Lag-aware correlation analysis (e.g., sleep today → recovery tomorrow)
+* Personalized baselines by weekday or training cycle
+* Explainable anomaly breakdowns (feature-level contribution)
+* Secure user authentication and data permissioning
+
+---
+
+## 11. Conclusion
+
+This project demonstrates how an AI-powered health aggregator can move beyond raw metrics to provide meaningful, actionable insights. By unifying data, applying interpretable ML, and layering AI-driven explanations, the platform helps users understand not just *what* is happening in their health data, but *why*—and what they can do next.
