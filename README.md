@@ -1,5 +1,7 @@
 # Personal Health & Wellness Aggregator – Design Document
 
+link: https://youtu.be/7TK_2qTsh6E
+
 ## 1. Overview
 
 The Personal Health & Wellness Aggregator is an intelligent platform designed to unify health data from multiple disconnected sources and transform it into actionable, personalized insights. Rather than acting as another raw data tracker, the system focuses on correlation discovery, anomaly detection, and explainable AI-driven guidance to help users understand how sleep, nutrition, and activity interact over time.
