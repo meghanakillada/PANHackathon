@@ -1,6 +1,8 @@
 # Personal Health & Wellness Aggregator – Design Document
 
-link: https://youtu.be/7TK_2qTsh6E
+link: https://youtu.be/dXTcl7r3iaU
+
+https://youtu.be/7TK_2qTsh6E
 
 ## 1. Overview
 
